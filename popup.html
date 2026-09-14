@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>B站橘猫守护</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo"><img src="icons/icon48.png" alt="" /></div>
+        <div>
+          <h1>B站橘猫守护</h1>
+          <p class="sub">温柔且坚定 · 决定权永远在你手里</p>
+        </div>
+      </header>
+
+      <section class="row">
+        <label class="switch">
+          <input type="checkbox" id="enabled" aria-label="守护开关" />
+          <span class="slider"></span>
+        </label>
+        <div class="row-text">
+          <strong>守护开关</strong>
+          <small>关掉后橘猫不会再来打扰你</small>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>提醒阈值</h2>
+        <div class="chips" id="threshold-chips">
+          <button class="chip" data-min="5">5 分钟</button>
+          <button class="chip" data-min="15">15 分钟</button>
+          <button class="chip" data-min="30">30 分钟</button>
+          <button class="chip" data-min="45">45 分钟</button>
+          <button class="chip" data-min="60">60 分钟</button>
+        </div>
+        <small class="hint">
+          本轮在 B 站累计达到该时长后，橘猫会覆盖整个页面
+        </small>
+        <div class="repeat-rule">
+          <span>再次提醒</span>
+          <strong>10 分钟</strong>
+          <small>固定规则 · 每次继续后重新做一次选择</small>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>当前这一轮</h2>
+        <div class="now">
+          <span class="now-num" id="now-minutes">0</span>
+          <span class="now-unit">分钟</span>
+          <span class="now-label">已在 B 站累计</span>
+        </div>
+        <small class="hint">
+          换视频 / 开新标签都会继续累加<br />
+          切走时暂停；连续离开 5 分钟后结束本轮
+        </small>
+      </section>
+
+      <section class="block">
+        <h2>今日记录</h2>
+        <div class="today-watch">
+          <div>
+            <span class="today-watch-value" id="today-watch">0 分钟</span>
+            <span class="today-watch-label">今天在 B 站</span>
+          </div>
+          <span class="today-date" id="today-date"></span>
+        </div>
+        <div class="stats today-stats">
+          <div class="stat">
+            <span class="num" id="today-shown">0</span>
+            <span class="label">橘猫出现</span>
+          </div>
+          <div class="stat">
+            <span class="num" id="today-continued">0</span>
+            <span class="label">再看 10 分钟</span>
+          </div>
+          <div class="stat">
+            <span class="num" id="today-left">0</span>
+            <span class="label">选择离开</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="block preview-block">
+        <h2>预览提醒阶段</h2>
+        <div class="preview-stages" id="preview-stages" role="group" aria-label="预览提醒阶段">
+          <button class="stage-chip active" data-stage="1">第一次</button>
+          <button class="stage-chip" data-stage="2">第二次</button>
+          <button class="stage-chip" data-stage="3">第三次+</button>
+        </div>
+        <button class="test-btn" id="test-btn">立刻召唤橘猫试试</button>
+        <small class="hint">不用真的等待计时：选择阶段后可直接预览三种橘猫状态。</small>
+      </section>
+
+      <footer>数据仅存本地 · 不上传任何服务器</footer>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
