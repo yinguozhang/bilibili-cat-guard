@@ -1,0 +1,363 @@
+/* popup.css - 设置面板样式
+   视觉语言与橘猫一致：暖橙 + 米白 + 圆润 */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: #fffaf5;
+  color: #3d2c1e;
+}
+
+.wrap {
+  padding: 18px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.logo {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.logo img {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+h1 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sub {
+  font-size: 11px;
+  color: #a08a75;
+  margin-top: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid #f0e4d8;
+  border-bottom: 1px solid #f0e4d8;
+}
+
+.row-text strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row-text small {
+  font-size: 11px;
+  color: #a08a75;
+}
+
+/* 开关 */
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #ddd0c2;
+  border-radius: 24px;
+  transition: 0.25s;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.25s;
+}
+
+.switch input:checked + .slider {
+  background: linear-gradient(135deg, #ff9f43, #ff7b3d);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
+}
+
+.block {
+  padding: 14px 0;
+  border-bottom: 1px solid #f0e4d8;
+}
+
+.block h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7a6a5a;
+  margin-bottom: 10px;
+}
+
+/* 阈值 chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  border: 1.5px solid #ffd7ac;
+  background: #fff;
+  color: #a5702f;
+  border-radius: 14px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.18s;
+  font-family: inherit;
+}
+
+.chip:hover {
+  border-color: #ff9f43;
+}
+
+.chip.active {
+  background: linear-gradient(135deg, #ff9f43, #ff7b3d);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+
+/* 当前这一轮累计 */
+.now {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #f0e4d8;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.now-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ff7b3d;
+  line-height: 1;
+}
+
+.now-unit {
+  font-size: 12px;
+  color: #a08a75;
+}
+
+.now-label {
+  margin-left: auto;
+  font-size: 11px;
+  color: #b5a291;
+}
+
+/* 统计 */
+.stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stat {
+  flex: 1;
+  text-align: center;
+  background: #fff;
+  border: 1px solid #f0e4d8;
+  border-radius: 10px;
+  padding: 10px 4px;
+}
+
+.num {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ff7b3d;
+}
+
+.label {
+  display: block;
+  font-size: 10px;
+  color: #a08a75;
+  margin-top: 3px;
+}
+
+/* 测试按钮 */
+.test-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #ff9f43, #ff7b3d);
+  cursor: pointer;
+  transition: 0.18s;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(255, 123, 61, 0.3);
+}
+
+.test-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 123, 61, 0.4);
+}
+
+footer {
+  text-align: center;
+  font-size: 10px;
+  color: #c0b0a0;
+  margin-top: 14px;
+}
+
+/* ====== 键盘焦点与减少动画 ====== */
+
+.chip:focus-visible,
+.test-btn:focus-visible,
+.switch input:focus-visible + .slider {
+  outline: 3px solid rgba(255, 123, 61, 0.35);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider,
+  .slider::before,
+  .chip,
+  .test-btn {
+    transition: none;
+  }
+}
+
+
+/* v0.3.1：预览阶段选择，避免把“提醒分钟数”误认为“角色阶段” */
+.preview-stages {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.stage-chip {
+  flex: 1;
+  border: 1px solid #efd5bc;
+  border-radius: 10px;
+  padding: 7px 5px;
+  background: #fff;
+  color: #8a6b53;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: 0.18s;
+}
+
+.stage-chip:hover {
+  border-color: #ffad62;
+}
+
+.stage-chip.active {
+  border-color: transparent;
+  background: #fff0e1;
+  color: #d86f2d;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(255, 159, 67, 0.35);
+}
+
+
+/* ====== v0.5：固定再次提醒规则 ====== */
+.repeat-rule {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid #f0e4d8;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  color: #8f7a67;
+}
+
+.repeat-rule strong {
+  color: #e97835;
+  font-size: 12px;
+}
+
+.repeat-rule small {
+  margin-left: auto;
+  color: #b5a291;
+  font-size: 9.5px;
+}
+
+/* ====== v0.5：今日记录 ====== */
+.today-watch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid #f0e4d8;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 244, 231, 0.95), rgba(255, 255, 255, 0.95));
+}
+
+.today-watch-value {
+  display: block;
+  color: #e97835;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.today-watch-label {
+  display: block;
+  margin-top: 4px;
+  color: #a08a75;
+  font-size: 10px;
+}
+
+.today-date {
+  color: #b7a28f;
+  font-size: 10px;
+}
+
+.today-stats .stat {
+  min-width: 0;
+}
+
+.today-stats .label {
+  line-height: 1.25;
+}
