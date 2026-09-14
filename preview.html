@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>橘猫 v0.5.0 图片角色预览</title>
+    <link rel="stylesheet" href="cat.css" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #4f4137;
+        background: #f6f7f8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      }
+      .fake-nav {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 0 32px;
+        background: white;
+        border-bottom: 1px solid #eee;
+      }
+      .fake-logo { color: #fb7299; font-size: 25px; font-weight: 800; }
+      .fake-search {
+        width: min(520px, 46vw);
+        height: 38px;
+        border-radius: 10px;
+        background: #f1f2f3;
+      }
+      .page {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 24px;
+        max-width: 1280px;
+        margin: 30px auto;
+        padding: 0 24px;
+      }
+      .video {
+        aspect-ratio: 16 / 9;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #91bad0, #f3c99a 62%, #8ebd9c);
+        box-shadow: inset 0 -70px 90px rgba(0,0,0,.12);
+      }
+      .title { height: 24px; width: 65%; margin: 18px 0 10px; border-radius: 8px; background: #dfe1e3; }
+      .meta { height: 15px; width: 40%; border-radius: 8px; background: #eceeef; }
+      .rec { display: flex; gap: 12px; margin-bottom: 16px; }
+      .thumb { width: 150px; aspect-ratio: 16 / 9; border-radius: 9px; background: #ddd; }
+      .lines { flex: 1; padding-top: 7px; }
+      .line { height: 12px; border-radius: 7px; background: #ddd; margin-bottom: 10px; }
+      .demo-controls {
+        position: fixed;
+        left: 18px;
+        bottom: 18px;
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        padding: 9px;
+        border-radius: 14px;
+        background: rgba(255,255,255,.94);
+        box-shadow: 0 8px 28px rgba(0,0,0,.12);
+      }
+      .demo-controls button {
+        border: 1px solid #ffd1a5;
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: #fffaf5;
+        color: #8a542c;
+        font: inherit;
+        cursor: pointer;
+      }
+      @media (max-width: 800px) {
+        .page { grid-template-columns: 1fr; }
+        aside { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fake-nav">
+      <div class="fake-logo">bilibili</div>
+      <span>首页</span><span>番剧</span><span>直播</span><span>游戏中心</span>
+      <div class="fake-search"></div>
+    </div>
+
+    <main class="page">
+      <section>
+        <div class="video"></div>
+        <div class="title"></div>
+        <div class="meta"></div>
+      </section>
+      <aside id="recommendations"></aside>
+    </main>
+
+    <div class="demo-controls">
+      <button data-stage="1">预览第一次</button>
+      <button data-stage="2">预览第二次</button>
+      <button data-stage="3">预览第三次</button>
+      <button data-stage="4">预览第四次+</button>
+    </div>
+
+    <script>
+      for (let i = 0; i < 6; i++) {
+        const rec = document.createElement('div');
+        rec.className = 'rec';
+        rec.innerHTML = '<div class="thumb"></div><div class="lines"><div class="line"></div><div class="line" style="width:72%"></div></div>';
+        document.getElementById('recommendations').appendChild(rec);
+      }
+
+      let catMessageListener = null;
+      window.chrome = {
+        runtime: {
+          onMessage: { addListener(fn) { catMessageListener = fn; } },
+          sendMessage() {},
+          getURL(path) { return path; },
+          lastError: null
+        },
+        storage: {
+          local: {
+            get(keys, cb) {
+              const value = { threshold: 30 };
+              if (typeof cb === 'function') cb(value);
+              return Promise.resolve(value);
+            }
+          },
+          onChanged: { addListener() {} }
+        }
+      };
+
+      function showStage(stage) {
+        if (!catMessageListener) return;
+        const old = document.getElementById('cat-guard-root');
+        if (old) old.remove();
+        const minutes = stage === 1 ? 30 : stage === 2 ? 40 : stage === 3 ? 50 : 60;
+        catMessageListener(
+          {
+            type: 'SHOW_CAT',
+            preview: true,
+            reminderIndex: stage,
+            minutes,
+            repeatIntervalMin: 10
+          },
+          {},
+          () => {}
+        );
+      }
+
+      document.querySelectorAll('[data-stage]').forEach((button) => {
+        button.addEventListener('click', () => showStage(Number(button.dataset.stage)));
+      });
+    </script>
+    <script src="content.js"></script>
+    <script>
+      const requestedStage = Math.max(1, Number(new URLSearchParams(location.search).get('stage')) || 1);
+      setTimeout(() => showStage(requestedStage), 450);
+    </script>
+  </body>
+</html>
