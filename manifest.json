@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "B站橘猫守护",
+  "short_name": "橘猫守护",
+  "version": "0.5.0",
+  "description": "一只温柔但坚定的戴眼镜橘猫：全屏挡住 B 站，让你明确选择再看 10 分钟，或现在离开 🐱",
+  "permissions": [
+    "storage",
+    "tabs",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.bilibili.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "B站橘猫守护",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "cat.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*.png"
+      ],
+      "matches": [
+        "*://*.bilibili.com/*"
+      ]
+    }
+  ]
+}
