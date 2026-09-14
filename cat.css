@@ -1,0 +1,383 @@
+/* cat.css - v0.4.0 全屏橘猫提醒
+   视觉目标：暖、软、有角色感；背景仍可感知，但内容不足以继续消费。
+   行为目标：必须明确选择“再看 10 分钟 / 离开”。 */
+
+#cat-guard-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 28px;
+  overflow: auto;
+  background:
+    radial-gradient(
+      circle at 50% 35%,
+      rgba(255, 252, 246, 0.42),
+      rgba(255, 244, 232, 0.50) 48%,
+      rgba(235, 211, 190, 0.56) 100%
+    );
+  -webkit-backdrop-filter: blur(7px) saturate(0.72) brightness(1.03);
+  backdrop-filter: blur(7px) saturate(0.72) brightness(1.03);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  animation: cat-overlay-in 0.28s ease-out both;
+}
+
+#cat-guard-root,
+#cat-guard-root * {
+  box-sizing: border-box;
+}
+
+#cat-guard-root.cat-leaving {
+  pointer-events: none;
+  animation: cat-overlay-out 0.28s ease-in both;
+}
+
+#cat-guard-root .cat-panel {
+  width: min(690px, calc(100vw - 48px));
+  min-height: min(650px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px 30px 24px;
+  border: 1px solid rgba(255, 159, 67, 0.08);
+  border-radius: 42px;
+  background: rgba(255, 253, 249, 0.34);
+  box-shadow:
+    0 26px 76px rgba(91, 61, 37, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  animation: cat-panel-in 0.5s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+#cat-guard-root .cat-panel.cat-nudge {
+  animation: cat-nudge 0.36s ease-out;
+}
+
+#cat-guard-root .cat-bubble {
+  position: relative;
+  width: min(540px, 100%);
+  max-width: 540px;
+  padding: 20px 28px 19px;
+  border: 2px solid rgba(255, 159, 67, 0.75);
+  border-radius: 34px;
+  background: rgba(255, 251, 246, 0.94);
+  color: #5b351f;
+  box-shadow: 0 12px 32px rgba(128, 79, 39, 0.13);
+  text-align: center;
+}
+
+#cat-guard-root .cat-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 2px solid rgba(255, 159, 67, 0.75);
+  border-bottom: 2px solid rgba(255, 159, 67, 0.75);
+  background: rgba(255, 251, 246, 0.94);
+  border-radius: 0 0 8px 0;
+}
+
+#cat-guard-root .cat-bubble-main {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(20px, 2.1vw, 29px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+#cat-guard-root .cat-bubble-emphasis {
+  margin: 0 4px;
+  color: #ee7b2d;
+  font-size: 1.18em;
+  font-weight: 800;
+}
+
+#cat-guard-root .cat-bubble-question {
+  position: relative;
+  z-index: 1;
+  margin-top: 4px;
+  font-size: clamp(18px, 1.8vw, 24px);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+#cat-guard-root .cat-bubble-note {
+  position: relative;
+  z-index: 1;
+  margin-top: 9px;
+  color: #a47b60;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+#cat-guard-root .cat-body {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: -2px;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 22px rgba(88, 54, 31, 0.10));
+  animation: cat-breathe 3.6s ease-in-out infinite;
+}
+
+#cat-guard-root .cat-character-image {
+  display: block;
+  width: min(430px, 74vw);
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+#cat-guard-root .cat-body.cat-face-surprised {
+  animation: cat-tilt 2.8s ease-in-out infinite;
+}
+
+#cat-guard-root .cat-body.cat-face-yawning {
+  animation: cat-slow-breathe 4.8s ease-in-out infinite;
+}
+
+#cat-guard-root .cat-body.cat-face-serious {
+  animation: cat-steady 5.2s ease-in-out infinite;
+}
+
+#cat-guard-root .cat-actions {
+  display: flex;
+  width: 100%;
+  max-width: 570px;
+  gap: 16px;
+  justify-content: center;
+  margin-top: -2px;
+}
+
+#cat-guard-root .cat-btn {
+  flex: 1 1 0;
+  min-height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: none;
+  border-radius: 25px;
+  padding: 13px 20px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+#cat-guard-root .cat-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 23px;
+  line-height: 1;
+}
+
+#cat-guard-root .cat-book-icon {
+  transform: translateY(-1px);
+  font-size: 19px;
+}
+
+#cat-guard-root .cat-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+#cat-guard-root .cat-btn:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+#cat-guard-root .cat-btn-later {
+  border: 1.5px solid #f1b16e;
+  background: rgba(255, 250, 244, 0.91);
+  color: #6a4026;
+  box-shadow: 0 5px 14px rgba(93, 62, 37, 0.08);
+}
+
+#cat-guard-root .cat-btn-later:hover:not(:disabled) {
+  box-shadow: 0 8px 20px rgba(93, 62, 37, 0.13);
+}
+
+#cat-guard-root .cat-btn-leave {
+  background: linear-gradient(135deg, #ff9f5a, #ff7542);
+  color: #ffffff;
+  box-shadow: 0 8px 22px rgba(255, 117, 66, 0.30);
+}
+
+#cat-guard-root .cat-btn-leave:hover:not(:disabled) {
+  box-shadow: 0 11px 28px rgba(255, 117, 66, 0.40);
+}
+
+#cat-guard-root .cat-footer {
+  margin-top: 8px;
+  color: #805b45;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: center;
+  opacity: 0.82;
+}
+
+#cat-guard-root .cat-status {
+  min-height: 17px;
+  max-width: 520px;
+  color: #a08a75;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+#cat-guard-root .cat-btn:focus-visible {
+  outline: 3px solid rgba(255, 123, 61, 0.45);
+  outline-offset: 3px;
+}
+
+@keyframes cat-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cat-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes cat-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cat-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-7px); }
+  55% { transform: translateX(6px); }
+  80% { transform: translateX(-3px); }
+}
+
+@keyframes cat-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.018) translateY(-3px); }
+}
+
+@keyframes cat-tilt {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.018) rotate(-1.5deg); }
+}
+
+@keyframes cat-slow-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.008) translateY(2px); }
+}
+
+@keyframes cat-steady {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+@media (max-width: 720px), (max-height: 760px) {
+  #cat-guard-root {
+    padding: 14px;
+  }
+
+  #cat-guard-root .cat-panel {
+    width: min(610px, calc(100vw - 28px));
+    min-height: auto;
+    padding: 22px 18px 18px;
+    gap: 8px;
+    border-radius: 30px;
+  }
+
+  #cat-guard-root .cat-bubble {
+    padding: 15px 19px;
+    border-radius: 26px;
+  }
+
+  #cat-guard-root .cat-bubble-note {
+    font-size: 11px;
+  }
+
+  #cat-guard-root .cat-character-image {
+    width: min(380px, 82vw);
+    max-height: 255px;
+  }
+
+  #cat-guard-root .cat-btn {
+    min-height: 50px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 520px), (max-height: 620px) {
+  #cat-guard-root .cat-panel {
+    padding: 17px 14px 15px;
+  }
+
+  #cat-guard-root .cat-actions {
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  #cat-guard-root .cat-btn {
+    width: 100%;
+  }
+
+  #cat-guard-root .cat-character-image {
+    width: min(320px, 84vw);
+    max-height: 215px;
+  }
+
+  #cat-guard-root .cat-footer {
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cat-guard-root,
+  #cat-guard-root.cat-leaving,
+  #cat-guard-root .cat-panel,
+  #cat-guard-root .cat-panel.cat-nudge,
+  #cat-guard-root .cat-body,
+  #cat-guard-root .cat-body.cat-face-surprised,
+  #cat-guard-root .cat-body.cat-face-yawning,
+  #cat-guard-root .cat-body.cat-face-serious {
+    animation: none !important;
+  }
+
+  #cat-guard-root .cat-btn {
+    transition: none;
+  }
+}
+
+/* 忙碌态：用户已做出选择、正在处理期间，面板整体降透明度并阻止再次点击 */
+#cat-guard-root.cat-busy .cat-panel {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+#cat-guard-root.cat-busy .cat-btn {
+  opacity: 0.55;
+}
