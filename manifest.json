@@ -6,13 +6,13 @@
   "description": "一只温柔但坚定的戴眼镜橘猫：全屏挡住 B 站，让你明确选择再看 10 分钟，或现在离开 🐱",
   "permissions": [
     "storage",
-    "tabs",
     "alarms",
     "scripting"
   ],
   "host_permissions": [
     "*://*.bilibili.com/*"
   ],
+  "minimum_chrome_version": "120",
   "background": {
     "service_worker": "background.js"
   },

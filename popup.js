@@ -53,6 +53,7 @@ function isBilibiliUrl(url) {
 
 // 初始化
 async function init() {
+  await chrome.runtime.sendMessage({ type: 'GET_REMINDER_STATE' }).catch(() => {});
   const data = await chrome.storage.local.get({
     enabled: true,
     threshold: 30,
@@ -73,7 +74,9 @@ function renderNow(ms) {
 
 function renderChips(threshold) {
   document.querySelectorAll('.chip').forEach((chip) => {
-    chip.classList.toggle('active', Number(chip.dataset.min) === threshold);
+    const selected = Number(chip.dataset.min) === threshold;
+    chip.classList.toggle('active', selected);
+    chip.setAttribute('aria-pressed', String(selected));
   });
 }
 
@@ -91,16 +94,14 @@ function renderDailyStats(value) {
 // 开关：只改 enabled，不清除 alarm。
 // 后台 tick 自己会在 disabled 时直接返回，重新打开也不会丢失计时器。
 $('enabled').addEventListener('change', async (e) => {
-  await chrome.storage.local.set({ enabled: e.target.checked });
+  await saveSettings({ enabled: e.target.checked });
 });
 
 // 阈值
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', async () => {
     const min = Number(chip.dataset.min);
-    await chrome.storage.local.set({ threshold: min });
-    renderChips(min);
-    renderNow(0);
+    await saveSettings({ threshold: min });
   });
 });
 
@@ -111,6 +112,7 @@ document.querySelectorAll('.stage-chip').forEach((chip) => {
     previewStage = Number(chip.dataset.stage) || 1;
     document.querySelectorAll('.stage-chip').forEach((item) => {
       item.classList.toggle('active', item === chip);
+      item.setAttribute('aria-pressed', String(item === chip));
     });
   });
 });
@@ -183,4 +185,19 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
-init();
+async function saveSettings(settings) {
+  $('settings-status').textContent = '';
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'SET_SETTINGS', settings });
+    if (!response?.ok) throw new Error('save-failed');
+  } catch {
+    $('settings-status').textContent = '设置未保存，请重试。';
+  }
+  await init();
+}
+document.querySelectorAll('.stage-chip').forEach(item => {
+  item.setAttribute('aria-pressed', String(Number(item.dataset.stage) === previewStage));
+});
+// Refresh local-date rollover even when no storage event arrives while the popup stays open.
+setInterval(init, 60000);
+init().catch(() => { $('settings-status').textContent = '暂时无法读取设置，请重新打开面板。'; });

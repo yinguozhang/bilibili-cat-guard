@@ -46,7 +46,7 @@ h1 {
 
 .sub {
   font-size: 11px;
-  color: #a08a75;
+  color: #6f5745;
   margin-top: 2px;
 }
 
@@ -67,7 +67,7 @@ h1 {
 
 .row-text small {
   font-size: 11px;
-  color: #a08a75;
+  color: #6f5745;
 }
 
 /* 开关 */
@@ -150,7 +150,7 @@ h1 {
 
 .chip.active {
   background: linear-gradient(135deg, #ff9f43, #ff7b3d);
-  color: #fff;
+  color: #3d2114;
   border-color: transparent;
   font-weight: 600;
 }
@@ -170,19 +170,19 @@ h1 {
 .now-num {
   font-size: 26px;
   font-weight: 700;
-  color: #ff7b3d;
+  color: #a74f16;
   line-height: 1;
 }
 
 .now-unit {
   font-size: 12px;
-  color: #a08a75;
+  color: #6f5745;
 }
 
 .now-label {
   margin-left: auto;
   font-size: 11px;
-  color: #b5a291;
+  color: #6f5745;
 }
 
 /* 统计 */
@@ -205,13 +205,13 @@ h1 {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #ff7b3d;
+  color: #a74f16;
 }
 
 .label {
   display: block;
   font-size: 10px;
-  color: #a08a75;
+  color: #6f5745;
   margin-top: 3px;
 }
 
@@ -223,7 +223,7 @@ h1 {
   padding: 11px;
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: #3d2114;
   background: linear-gradient(135deg, #ff9f43, #ff7b3d);
   cursor: pointer;
   transition: 0.18s;
@@ -239,7 +239,7 @@ h1 {
 footer {
   text-align: center;
   font-size: 10px;
-  color: #c0b0a0;
+  color: #6f5745;
   margin-top: 14px;
 }
 
@@ -248,7 +248,7 @@ footer {
 .chip:focus-visible,
 .test-btn:focus-visible,
 .switch input:focus-visible + .slider {
-  outline: 3px solid rgba(255, 123, 61, 0.35);
+  outline: 3px solid #8a542c;
   outline-offset: 2px;
 }
 
@@ -256,6 +256,7 @@ footer {
   .slider,
   .slider::before,
   .chip,
+  .stage-chip,
   .test-btn {
     transition: none;
   }
@@ -282,6 +283,16 @@ footer {
   transition: 0.18s;
 }
 
+.stage-chip:focus-visible {
+  outline: 3px solid #8a542c;
+  outline-offset: 2px;
+}
+
+#settings-status {
+  color: #7a321f;
+  font-size: 12px;
+}
+
 .stage-chip:hover {
   border-color: #ffad62;
 }
@@ -289,7 +300,7 @@ footer {
 .stage-chip.active {
   border-color: transparent;
   background: #fff0e1;
-  color: #d86f2d;
+  color: #84451e;
   font-weight: 700;
   box-shadow: inset 0 0 0 1px rgba(255, 159, 67, 0.35);
 }
@@ -310,13 +321,13 @@ footer {
 }
 
 .repeat-rule strong {
-  color: #e97835;
+  color: #a74f16;
   font-size: 12px;
 }
 
 .repeat-rule small {
   margin-left: auto;
-  color: #b5a291;
+  color: #6f5745;
   font-size: 9.5px;
 }
 
@@ -336,7 +347,7 @@ footer {
 
 .today-watch-value {
   display: block;
-  color: #e97835;
+  color: #a74f16;
   font-size: 20px;
   font-weight: 700;
   line-height: 1.15;
@@ -345,12 +356,12 @@ footer {
 .today-watch-label {
   display: block;
   margin-top: 4px;
-  color: #a08a75;
+  color: #6f5745;
   font-size: 10px;
 }
 
 .today-date {
-  color: #b7a28f;
+  color: #6f5745;
   font-size: 10px;
 }
 

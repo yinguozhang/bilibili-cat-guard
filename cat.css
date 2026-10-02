@@ -116,7 +116,7 @@
   position: relative;
   z-index: 1;
   margin-top: 9px;
-  color: #a47b60;
+  color: #76513b;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
@@ -218,7 +218,7 @@
 
 #cat-guard-root .cat-btn-leave {
   background: linear-gradient(135deg, #ff9f5a, #ff7542);
-  color: #ffffff;
+  color: #3d2114;
   box-shadow: 0 8px 22px rgba(255, 117, 66, 0.30);
 }
 
@@ -239,14 +239,14 @@
 #cat-guard-root .cat-status {
   min-height: 17px;
   max-width: 520px;
-  color: #a08a75;
+  color: #6f5745;
   font-size: 11px;
   line-height: 1.45;
   text-align: center;
 }
 
 #cat-guard-root .cat-btn:focus-visible {
-  outline: 3px solid rgba(255, 123, 61, 0.45);
+  outline: 3px solid #8a542c;
   outline-offset: 3px;
 }
 
