@@ -1,430 +1,276 @@
-// background.js - Service Worker
-//
-// 计时策略 v4：按【一次 B 站使用会话】累计，并在提醒时等待用户明确选择。
-// - 同一会话内换视频 / 开新标签不清零。
-// - 暂时切走 B 站只暂停；连续离开 5 分钟才结束本轮。
-// - sessionMs = 本轮总时长（用于 UI / 提示语）
-// - accumulatedMs = 距离下一次提醒的计时
-// - awaitingDecision = 全屏橘猫已出现，等待“再看 10 分钟 / 去写论文”
-//
-// MV3 的 service worker 会休眠，因此用 chrome.alarms 周期唤醒。
-
+// All session mutations are serialized, including timer, settings and decisions.
 const ALARM_TICK = 'cat-guard-tick';
-const TICK_MS = 60 * 1000;
+const ALARM_DEADLINE = 'cat-guard-deadline';
 const REPEAT_INTERVAL_MIN = 10;
-const IDLE_RESET_MIN = 5;
-
+const IDLE_RESET_MS = 5 * 60000;
+// Longer gaps cannot be distinguished reliably from device sleep. Never credit them.
+const MAX_OBSERVATION_GAP_MS = 2 * 60000;
 const DEFAULT_STATS = { shown: 0, dismissed: 0, closedBilibili: 0 };
-const DEFAULT_DAILY_STATS = {
-  date: '',
-  watchMs: 0,
-  shown: 0,
-  continued: 0,
-  left: 0
+const DEFAULT_DAILY_STATS = { date: '', watchMs: 0, shown: 0, continued: 0, left: 0 };
+const DEFAULTS = {
+  enabled: true, threshold: 30, accumulatedMs: 0, sessionMs: 0,
+  awayMs: 0, repeatCount: 0, awaitingDecision: false, reminderMinutes: 0,
+  reminderId: '', lastTickAt: 0, wasActive: false, awaySince: 0,
+  stats: DEFAULT_STATS, dailyStats: DEFAULT_DAILY_STATS
 };
-
-function getLocalDateKey(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+let mutationQueue = Promise.resolve();
+function enqueue(work) {
+  const result = mutationQueue.then(work);
+  mutationQueue = result.catch((error) => console.error('[CatGuard]', error));
+  return result;
 }
-
+function getLocalDateKey(date = new Date()) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')].join('-');
+}
 function normalizeDailyStats(value) {
   const today = getLocalDateKey();
-  if (!value || value.date !== today) {
-    return { ...DEFAULT_DAILY_STATS, date: today };
-  }
-
-  return { ...DEFAULT_DAILY_STATS, ...value, date: today };
+  return { ...DEFAULT_DAILY_STATS, ...(value?.date === today ? value : {}), date: today };
 }
-
-const DEFAULTS = {
-  enabled: true,
-  threshold: 30,
-  accumulatedMs: 0,
-  sessionMs: 0,
-  awayMs: 0,
-  repeatCount: 0,
-  awaitingDecision: false,
-  reminderMinutes: 0,
-  stats: DEFAULT_STATS,
-  dailyStats: DEFAULT_DAILY_STATS
-};
-
-// ====== 工具 ======
-
 function isBilibiliUrl(url) {
-  if (!url) return false;
-
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-
-    return (
-      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-      (host === 'bilibili.com' || host.endsWith('.bilibili.com'))
-    );
-  } catch {
-    return false;
-  }
+    return ['http:', 'https:'].includes(parsed.protocol) &&
+      (parsed.hostname === 'bilibili.com' || parsed.hostname.endsWith('.bilibili.com'));
+  } catch { return false; }
 }
-
-// 只在浏览器窗口本身处于前台、且当前活动标签为 B 站时计时。
 async function getActiveBilibiliTab() {
   try {
-    const win = await chrome.windows.getLastFocused({ populate: false });
-    if (!win || !win.focused) return null;
-
+    const win = await chrome.windows.getLastFocused();
+    if (!win?.focused) return null;
     const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
     return tab && isBilibiliUrl(tab.url) ? tab : null;
-  } catch (e) {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      return tab && isBilibiliUrl(tab.url) ? tab : null;
-    } catch {
-      return null;
-    }
-  }
+  } catch { return null; }
 }
-
-async function ensureTickAlarm() {
-  try {
-    const existing = await chrome.alarms.get(ALARM_TICK);
-    if (!existing) {
-      await chrome.alarms.create(ALARM_TICK, { periodInMinutes: 1 });
-      console.log('[CatGuard] 周期计时器已启动（每 1 分钟检查一次）');
-    }
-  } catch (e) {
-    console.error('[CatGuard] 创建计时器失败', e);
-  }
+function clearSession(s) {
+  Object.assign(s, { accumulatedMs: 0, sessionMs: 0, awayMs: 0, awaySince: 0,
+    repeatCount: 0, awaitingDecision: false, reminderMinutes: 0, reminderId: '' });
 }
-
-async function resetSession() {
-  await chrome.storage.local.set({
-    accumulatedMs: 0,
-    sessionMs: 0,
-    awayMs: 0,
-    repeatCount: 0,
-    awaitingDecision: false,
-    reminderMinutes: 0
-  });
+function eventStats(s, kind) {
+  s.stats = { ...DEFAULT_STATS, ...s.stats };
+  s.dailyStats = normalizeDailyStats(s.dailyStats);
+  s.stats[{ shown: 'shown', continued: 'dismissed', left: 'closedBilibili' }[kind]]++;
+  s.dailyStats[kind]++;
 }
-
-async function updateEventStats(kind) {
-  const data = await chrome.storage.local.get(['stats', 'dailyStats']);
-  const stats = { ...DEFAULT_STATS, ...(data.stats || {}) };
-  const dailyStats = normalizeDailyStats(data.dailyStats);
-
-  const cumulativeKey = {
-    shown: 'shown',
-    continued: 'dismissed',
-    left: 'closedBilibili'
-  }[kind];
-
-  if (cumulativeKey && Object.prototype.hasOwnProperty.call(stats, cumulativeKey)) {
-    stats[cumulativeKey] += 1;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(dailyStats, kind)) {
-    dailyStats[kind] += 1;
-  }
-
-  await chrome.storage.local.set({ stats, dailyStats });
+function addWatchInterval(s, start, end) {
+  s.dailyStats = normalizeDailyStats(s.dailyStats);
+  // Only retain today's share when an observed interval straddles midnight.
+  const midnight = new Date(end);
+  midnight.setHours(0, 0, 0, 0);
+  s.dailyStats.watchMs += Math.max(0, end - Math.max(start, midnight.getTime()));
 }
-
-async function addDailyWatchMs(ms) {
-  const data = await chrome.storage.local.get(['dailyStats']);
-  const dailyStats = normalizeDailyStats(data.dailyStats);
-  dailyStats.watchMs += Math.max(0, Number(ms) || 0);
-  await chrome.storage.local.set({ dailyStats });
-}
-
-async function hideVisibleReminders() {
-  try {
-    const tabs = await chrome.tabs.query({});
-    await Promise.all(
-      tabs
-        .filter((tab) => tab.id && isBilibiliUrl(tab.url))
-        .map((tab) =>
-          chrome.tabs.sendMessage(tab.id, { type: 'HIDE_CAT', resume: false }).catch(() => {})
-        )
-    );
-  } catch {
-    // 清理遮罩失败不影响会话状态重置。
-  }
-}
-
-// ====== 生命周期 ======
-
-chrome.runtime.onInstalled.addListener(async () => {
-  const current = await chrome.storage.local.get(null);
-  const next = { ...DEFAULTS, ...current };
-
-  if (!Object.prototype.hasOwnProperty.call(current, 'sessionMs')) {
-    next.sessionMs = current.accumulatedMs || 0;
-  }
-
-  // 升级版本时不保留一个可能已经失效的“等待选择”遮罩状态。
-  next.awaitingDecision = false;
-  next.reminderMinutes = 0;
-  next.stats = { ...DEFAULT_STATS, ...(current.stats || {}) };
-  next.dailyStats = normalizeDailyStats(current.dailyStats);
-
-  await chrome.storage.local.set(next);
-  await ensureTickAlarm();
-  console.log('[CatGuard] 已就绪 · v0.5 今日记录 + 图片角色');
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-  await ensureTickAlarm();
-});
-
-ensureTickAlarm();
-
-// ====== 周期 tick ======
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === ALARM_TICK) await tick();
-});
-
-async function tick() {
+async function readState() {
   const s = await chrome.storage.local.get(DEFAULTS);
-  if (!s.enabled) return;
-
-  const activeBiliTab = await getActiveBilibiliTab();
-
-  // 橘猫已经覆盖页面时，不继续累计观看时间。
-  // 如果用户刷新/切到另一个 B 站标签导致遮罩消失，则重新确保遮罩存在。
-  if (s.awaitingDecision) {
-    if (activeBiliTab) {
-      await ensureReminderVisible(
-        activeBiliTab,
-        s.reminderMinutes || Math.max(1, Math.round(s.sessionMs / 60000)),
-        s.repeatCount || 1
-      );
-      if (s.awayMs !== 0) {
-        await chrome.storage.local.set({ awayMs: 0 });
-      }
-      return;
-    }
-
-    const awayMs = (s.awayMs || 0) + TICK_MS;
-    if (awayMs >= IDLE_RESET_MIN * 60 * 1000) {
-      console.log('[CatGuard] 提醒期间连续离开 B 站已满 5 分钟，本轮结束');
-      await resetSession();
-      await hideVisibleReminders();
-    } else {
-      await chrome.storage.local.set({ awayMs });
-    }
-    return;
-  }
-
-  if (activeBiliTab) {
-    s.accumulatedMs = (s.accumulatedMs || 0) + TICK_MS;
-    s.sessionMs = (s.sessionMs || 0) + TICK_MS;
-    s.awayMs = 0;
-    await addDailyWatchMs(TICK_MS);
-
-    const needMin = s.repeatCount === 0 ? s.threshold : REPEAT_INTERVAL_MIN;
-    const needMs = needMin * 60 * 1000;
-
-    if (s.accumulatedMs >= needMs) {
-      const minutes = Math.max(1, Math.round(s.sessionMs / 60000));
-      const previousRepeatCount = s.repeatCount || 0;
-
-      // 先落盘“正在等待选择”，再显示遮罩，避免用户极快点击时状态还没保存。
-      s.awaitingDecision = true;
-      s.reminderMinutes = minutes;
-      s.repeatCount = previousRepeatCount + 1;
-      await chrome.storage.local.set({
-        awaitingDecision: true,
-        reminderMinutes: minutes,
-        repeatCount: s.repeatCount
-      });
-
-      const shown = await triggerReminder(
-        activeBiliTab,
-        minutes,
-        previousRepeatCount > 0,
-        s.repeatCount
-      );
-
-      if (!shown) {
-        // 没显示成功就回滚，下一次 tick 还能重试。
-        s.awaitingDecision = false;
-        s.reminderMinutes = 0;
-        s.repeatCount = previousRepeatCount;
-      }
-
-      // 不在“显示提醒”这一刻重置 accumulatedMs。
-      // 用户真正选择“再看 10 分钟”后才开始新的一轮 10 分钟。
-    }
-  } else {
-    s.awayMs = (s.awayMs || 0) + TICK_MS;
-
-    if (s.awayMs >= IDLE_RESET_MIN * 60 * 1000) {
-      if (
-        (s.accumulatedMs || 0) > 0 ||
-        (s.sessionMs || 0) > 0 ||
-        (s.repeatCount || 0) > 0
-      ) {
-        console.log('[CatGuard] 连续离开 B 站已满 5 分钟，本轮结束');
-      }
-
-      s.accumulatedMs = 0;
-      s.sessionMs = 0;
-      s.repeatCount = 0;
-      s.reminderMinutes = 0;
-      await hideVisibleReminders();
-    }
-  }
-
-  await chrome.storage.local.set({
-    accumulatedMs: s.accumulatedMs,
-    sessionMs: s.sessionMs,
-    awayMs: s.awayMs,
-    repeatCount: s.repeatCount,
-    awaitingDecision: s.awaitingDecision,
-    reminderMinutes: s.reminderMinutes
-  });
+  s.dailyStats = normalizeDailyStats(s.dailyStats);
+  if (![5, 15, 30, 45, 60].includes(s.threshold)) s.threshold = 30;
+  return s;
 }
-
-// ====== 触发 / 恢复橘猫 ======
-
-function reminderMessage(type, minutes, isRepeat = false, reminderIndex = 1) {
-  return {
-    type,
-    minutes,
-    isRepeat,
-    reminderIndex,
-    repeatIntervalMin: REPEAT_INTERVAL_MIN
-  };
+function reminderMessage(s, type = 'ENSURE_CAT') {
+  return { type, reminderId: s.reminderId, minutes: s.reminderMinutes,
+    reminderIndex: s.repeatCount, isRepeat: s.repeatCount > 1,
+    repeatIntervalMin: REPEAT_INTERVAL_MIN };
 }
-
-async function sendMessageWithInjection(tab, message) {
-  if (!tab || !tab.id || !isBilibiliUrl(tab.url)) return false;
-
+async function bounded(promise) {
+  let timeout;
   try {
-    await chrome.tabs.sendMessage(tab.id, message);
-    return true;
-  } catch (e) {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('message-timeout')), 2500);
+    })]);
+  } finally { clearTimeout(timeout); }
+}
+async function hideVisibleReminders(reminderId = '', resume = false) {
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.filter(tab => Number.isInteger(tab.id) && isBilibiliUrl(tab.url))
+    .map(tab => bounded(chrome.tabs.sendMessage(tab.id,
+      { type: 'HIDE_CAT', reminderId, resume })).catch(() => {})));
+}
+async function sendMessageWithInjection(tab, message) {
+  if (!Number.isInteger(tab?.id) || !isBilibiliUrl(tab.url)) return false;
+  try {
+    const response = await bounded(chrome.tabs.sendMessage(tab.id, message));
+    return response?.ok === true;
+  } catch {
     try {
-      await chrome.scripting.insertCSS({
-        target: { tabId: tab.id },
-        files: ['cat.css']
-      });
-
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content.js']
-      });
-
-      await chrome.tabs.sendMessage(tab.id, message);
-      return true;
-    } catch (e2) {
-      console.error('[CatGuard] 补注入失败', e2);
+      await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['cat.css'] });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      const response = await bounded(chrome.tabs.sendMessage(tab.id, message));
+      return response?.ok === true;
+    } catch (error) {
+      console.error('[CatGuard] 补注入失败', error);
       return false;
     }
   }
 }
-
-async function triggerReminder(tab, minutes, isRepeat, reminderIndex) {
-  const shown = await sendMessageWithInjection(
-    tab,
-    reminderMessage('SHOW_CAT', minutes, isRepeat, reminderIndex)
-  );
-
-  if (!shown) return false;
-
-  await updateEventStats('shown');
-  console.log(
-    `[CatGuard] 触发全屏提醒（${isRepeat ? '再提醒' : '首次'}）· 本轮累计 ${minutes} 分钟`
-  );
-  return true;
+async function schedule(s, tab) {
+  if (!await chrome.alarms.get(ALARM_TICK)) {
+    await chrome.alarms.create(ALARM_TICK, { periodInMinutes: 1 });
+  }
+  await chrome.alarms.clear(ALARM_DEADLINE);
+  if (!s.enabled) return;
+  const now = Date.now();
+  let remaining;
+  if (tab && !s.awaitingDecision) {
+    remaining = (s.repeatCount ? REPEAT_INTERVAL_MIN : s.threshold) * 60000 - s.accumulatedMs;
+  } else if (!tab && s.awaySince) {
+    remaining = IDLE_RESET_MS - (now - s.awaySince);
+  }
+  if (remaining !== undefined) {
+    await chrome.alarms.create(ALARM_DEADLINE, { when: now + Math.max(30000, remaining) });
+  }
 }
-
-async function ensureReminderVisible(tab, minutes, reminderIndex) {
-  return sendMessageWithInjection(
-    tab,
-    reminderMessage('ENSURE_CAT', minutes, reminderIndex > 1, reminderIndex)
-  );
+// Settle the previous observed foreground interval before adopting the new foreground state.
+async function observe(display = true) {
+  const s = await readState();
+  const tab = await getActiveBilibiliTab();
+  const now = Date.now();
+  const delta = s.lastTickAt ? now - s.lastTickAt : 0;
+  if (delta < 0 || delta > MAX_OBSERVATION_GAP_MS) {
+    const oldId = s.reminderId;
+    clearSession(s);
+    await hideVisibleReminders(oldId, false);
+  } else if (s.enabled && s.wasActive && !s.awaitingDecision && delta > 0) {
+    s.sessionMs += delta;
+    s.accumulatedMs += delta;
+    addWatchInterval(s, s.lastTickAt, now);
+  }
+  if (!s.enabled) {
+    s.wasActive = false;
+  } else if (tab) {
+    // Evaluate an expired away interval before clearing its timestamp.
+    if (s.awaySince && now - s.awaySince >= IDLE_RESET_MS) {
+      const oldId = s.reminderId;
+      clearSession(s);
+      await hideVisibleReminders(oldId, false);
+    }
+    s.awaySince = 0;
+    s.awayMs = 0;
+    s.wasActive = true;
+  } else {
+    if (!s.awaySince) s.awaySince = now;
+    s.awayMs = now - s.awaySince;
+    s.wasActive = false;
+    if (s.awayMs >= IDLE_RESET_MS) {
+      const oldId = s.reminderId;
+      clearSession(s);
+      s.awaySince = now;
+      await hideVisibleReminders(oldId, false);
+    }
+  }
+  s.lastTickAt = now;
+  // Persist before display; subsequent decisions run after this operation, never under it.
+  await chrome.storage.local.set(s);
+  if (display && s.enabled && tab) {
+    if (s.awaitingDecision) {
+      await sendMessageWithInjection(tab, reminderMessage(s));
+    } else if (s.accumulatedMs >= (s.repeatCount ? REPEAT_INTERVAL_MIN : s.threshold) * 60000) {
+      const previousCount = s.repeatCount;
+      s.awaitingDecision = true;
+      s.reminderMinutes = Math.max(1, Math.round(s.sessionMs / 60000));
+      s.repeatCount++;
+      s.reminderId = crypto.randomUUID();
+      await chrome.storage.local.set(s);
+      if (await sendMessageWithInjection(tab, reminderMessage(s, 'SHOW_CAT'))) {
+        eventStats(s, 'shown');
+      } else {
+        s.awaitingDecision = false;
+        s.reminderMinutes = 0;
+        s.reminderId = '';
+        s.repeatCount = previousCount;
+      }
+      await chrome.storage.local.set(s);
+    }
+  }
+  await schedule(s, tab);
+  return { s, tab };
 }
-
-// ====== 接收 content script 消息 ======
-
+async function handleAction(msg, sender) {
+  const s = await readState();
+  if (!s.enabled || !s.awaitingDecision || !msg.reminderId || msg.reminderId !== s.reminderId) {
+    return { ok: false, error: 'stale-reminder' };
+  }
+  if (!Number.isInteger(sender.tab?.id) || !isBilibiliUrl(sender.tab.url)) {
+    return { ok: false, error: 'invalid-tab' };
+  }
+  const tab = await chrome.tabs.get(sender.tab.id).catch(() => null);
+  if (!tab || !isBilibiliUrl(tab.url)) return { ok: false, error: 'invalid-tab' };
+  if (!['continue', 'leave'].includes(msg.action)) return { ok: false, error: 'unknown-action' };
+  if (msg.action === 'leave') {
+    try { await chrome.tabs.remove(tab.id); }
+    catch { return { ok: false, error: 'close-failed' }; }
+  }
+  const oldId = s.reminderId;
+  eventStats(s, msg.action === 'continue' ? 'continued' : 'left');
+  if (msg.action === 'continue') {
+    Object.assign(s, { accumulatedMs: 0, awayMs: 0, awaySince: 0,
+      awaitingDecision: false, reminderMinutes: 0, reminderId: '' });
+  } else {
+    clearSession(s);
+  }
+  // A continuation starts at the decision, rather than the next minute sample.
+  s.lastTickAt = Date.now();
+  s.wasActive = Boolean(await getActiveBilibiliTab());
+  await chrome.storage.local.set(s);
+  await hideVisibleReminders(oldId, msg.action === 'continue');
+  await schedule(s, await getActiveBilibiliTab());
+  return { ok: true, repeatIntervalMin: REPEAT_INTERVAL_MIN };
+}
+async function setSettings(msg) {
+  const { s } = await observe(false);
+  const next = msg.settings || {};
+  if ((next.enabled !== undefined && typeof next.enabled !== 'boolean') ||
+      (next.threshold !== undefined && ![5, 15, 30, 45, 60].includes(next.threshold))) {
+    return { ok: false, error: 'invalid-setting' };
+  }
+  const changed = (next.enabled !== undefined && next.enabled !== s.enabled) ||
+    (next.threshold !== undefined && next.threshold !== s.threshold);
+  if (changed) {
+    const oldId = s.reminderId;
+    clearSession(s);
+    if (next.enabled !== undefined) s.enabled = next.enabled;
+    if (next.threshold !== undefined) s.threshold = next.threshold;
+    s.lastTickAt = Date.now();
+    s.wasActive = s.enabled && Boolean(await getActiveBilibiliTab());
+    await chrome.storage.local.set(s);
+    await hideVisibleReminders(oldId, true);
+    await schedule(s, await getActiveBilibiliTab());
+  }
+  return { ok: true };
+}
+async function startSession() {
+  const s = await readState();
+  clearSession(s);
+  s.lastTickAt = Date.now();
+  s.wasActive = s.enabled && Boolean(await getActiveBilibiliTab());
+  await chrome.storage.local.set(s);
+  await hideVisibleReminders('', false);
+  await schedule(s, await getActiveBilibiliTab());
+}
+chrome.runtime.onInstalled.addListener(() => enqueue(startSession));
+chrome.runtime.onStartup.addListener(() => enqueue(startSession));
+chrome.alarms.onAlarm.addListener(alarm => {
+  if ([ALARM_TICK, ALARM_DEADLINE].includes(alarm.name)) enqueue(observe);
+});
+chrome.tabs.onActivated.addListener(() => enqueue(observe));
+chrome.tabs.onUpdated.addListener((id, change) => {
+  if (change.url || change.status === 'complete') enqueue(observe);
+});
+chrome.tabs.onRemoved.addListener(() => enqueue(observe));
+chrome.windows.onFocusChanged.addListener(() => enqueue(observe));
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type !== 'REMINDER_ACTION') return;
-
-  const tabId = sender.tab?.id;
-
-  (async () => {
-    if (msg.action === 'continue') {
-      const state = await chrome.storage.local.get({ awaitingDecision: false });
-      if (!state.awaitingDecision) {
-        sendResponse({ ok: true, alreadyHandled: true });
-        return;
-      }
-
-      await updateEventStats('continued');
-      await chrome.storage.local.set({
-        accumulatedMs: 0,
-        awayMs: 0,
-        awaitingDecision: false,
-        reminderMinutes: 0
-      });
-
-      console.log(`[CatGuard] 用户选择再看 ${REPEAT_INTERVAL_MIN} 分钟`);
-      sendResponse({ ok: true, repeatIntervalMin: REPEAT_INTERVAL_MIN });
-      return;
+  if (!['REMINDER_ACTION', 'GET_REMINDER_STATE', 'SET_SETTINGS'].includes(msg?.type)) return;
+  enqueue(async () => {
+    if (msg.type === 'REMINDER_ACTION') return handleAction(msg, sender);
+    if (msg.type === 'SET_SETTINGS') {
+      if (sender.tab || sender.id !== chrome.runtime.id) return { ok: false, error: 'invalid-sender' };
+      return setSettings(msg);
     }
-
-    if (msg.action === 'leave') {
-      await updateEventStats('left');
-      await resetSession();
-
-      if (typeof tabId !== 'number') {
-        sendResponse({ ok: false, error: 'missing-tab' });
-        return;
-      }
-
-      try {
-        await chrome.tabs.remove(tabId);
-        console.log('[CatGuard] 用户选择离开 · 已关闭当前 B 站标签');
-        sendResponse({ ok: true });
-      } catch (e) {
-        console.error('[CatGuard] 关闭当前 B 站标签失败', e);
-        sendResponse({ ok: false, error: 'close-failed' });
-      }
-      return;
-    }
-
-    sendResponse({ ok: false, error: 'unknown-action' });
-  })().catch((e) => {
-    console.error('[CatGuard] 处理提醒选择失败', e);
+    const { s } = await observe();
+    return { ok: true, reminder: s.enabled && s.awaitingDecision ? reminderMessage(s) : null };
+  }).then(sendResponse, error => {
+    console.error('[CatGuard] 处理消息失败', error);
     sendResponse({ ok: false, error: 'internal-error' });
   });
-
   return true;
 });
-
-// ====== 设置变化 ======
-
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace !== 'local') return;
-
-  if (changes.threshold) {
-    resetSession();
-    console.log(
-      '[CatGuard] 阈值改为 ' + changes.threshold.newValue + ' 分钟 · 本轮已重置'
-    );
-  }
-
-  if (changes.enabled) {
-    if (changes.enabled.newValue === false) {
-      resetSession();
-    } else {
-      ensureTickAlarm();
-    }
-  }
-});
+// On worker wake, persisted timestamps retain short sessions, while long gaps end them.
+enqueue(observe);

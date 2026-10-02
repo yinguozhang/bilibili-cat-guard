@@ -9,6 +9,10 @@ if (!window.__catGuardInjected) {
   let mediaPauseTimer = null;
   let previousOverflow = '';
   let activeKeydownHandler = null;
+  let previousFocus = null;
+  const backgroundInert = new Map();
+  let inertObserver = null;
+  let messageGeneration = 0;
 
   function getReminderCopy(reminderIndex, minutes) {
     const stage = Math.max(1, Number(reminderIndex) || 1);
@@ -119,6 +123,17 @@ if (!window.__catGuardInjected) {
   }
 
   function lockPage() {
+    previousFocus = document.activeElement;
+    const isolate = () => {
+      for (const element of document.body.children) {
+        if (element.id === 'cat-guard-root' || backgroundInert.has(element)) continue;
+        backgroundInert.set(element, element.inert);
+        element.inert = true;
+      }
+    };
+    isolate();
+    inertObserver = new MutationObserver(isolate);
+    inertObserver.observe(document.body, { childList: true });
     previousOverflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = 'hidden';
     startMediaGuard();
@@ -127,6 +142,12 @@ if (!window.__catGuardInjected) {
   function unlockPage({ resume = false } = {}) {
     document.documentElement.style.overflow = previousOverflow;
     stopMediaGuard({ resume });
+    inertObserver?.disconnect();
+    inertObserver = null;
+    for (const [element, value] of backgroundInert) element.inert = value;
+    backgroundInert.clear();
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    previousFocus = null;
 
     if (activeKeydownHandler) {
       document.removeEventListener('keydown', activeKeydownHandler, true);
@@ -148,18 +169,13 @@ if (!window.__catGuardInjected) {
 
     if (!root) return;
 
-    if (!animate) {
-      root.remove();
-      return;
-    }
-
-    root.classList.add('cat-leaving');
-    setTimeout(() => root.remove(), 300);
+    // Remove synchronously so an incoming reminder never finds a leaving overlay.
+    root.remove();
   }
 
-  function sendAction(action) {
+  function sendAction(action, reminderId) {
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: 'REMINDER_ACTION', action }, (response) => {
+      chrome.runtime.sendMessage({ type: 'REMINDER_ACTION', action, reminderId }, (response) => {
         if (chrome.runtime.lastError) {
           resolve({ ok: false, error: chrome.runtime.lastError.message });
           return;
@@ -214,6 +230,7 @@ if (!window.__catGuardInjected) {
     root.id = 'cat-guard-root';
     root.dataset.preview = isPreview ? 'true' : 'false';
     root.dataset.stage = String(reminderIndex);
+    root.dataset.reminderId = options.reminderId || '';
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-labelledby', 'cat-guard-message');
@@ -263,13 +280,19 @@ if (!window.__catGuardInjected) {
 
       setBusy(true);
       status.textContent = `好，橘猫给你再留 ${repeatMin} 分钟。`;
-      const response = await sendAction('continue');
+      const response = await sendAction('continue', options.reminderId);
+      if (!root.isConnected) return;
 
       if (response?.ok) {
         removeOverlay({ resume: true });
         return;
       }
 
+      if (response?.error === 'stale-reminder') {
+        removeOverlay({ resume: false });
+        syncReminderState();
+        return;
+      }
       setBusy(false);
       status.textContent = '刚才没有保存成功，再点一次试试～';
     });
@@ -282,8 +305,14 @@ if (!window.__catGuardInjected) {
 
       setBusy(true);
       status.textContent = '好，橘猫帮你把这一页关掉。';
-      const response = await sendAction('leave');
+      const response = await sendAction('leave', options.reminderId);
+      if (!root.isConnected) return;
 
+      if (response?.error === 'stale-reminder') {
+        removeOverlay({ resume: false });
+        syncReminderState();
+        return;
+      }
       if (!response?.ok) {
         setBusy(false);
         status.textContent = '这一页没能关掉，再点一次试试～';
@@ -307,7 +336,7 @@ if (!window.__catGuardInjected) {
     root.addEventListener('keydown', (e) => e.stopPropagation());
 
     document.body.appendChild(root);
-    lockPage();
+    if (!options.alreadyLocked) lockPage();
 
     activeKeydownHandler = (e) => {
       if (!document.getElementById('cat-guard-root')) return;
@@ -344,51 +373,87 @@ if (!window.__catGuardInjected) {
     setTimeout(() => btnContinue.focus({ preventScroll: true }), 0);
   }
 
-  function showReminder(msg) {
-    const existing = document.getElementById('cat-guard-root');
-    if (existing) {
-      if (!msg.preview && existing.dataset.preview === 'true') {
-        removeOverlay({ resume: false, animate: false });
-      } else {
-        pausePageMedia();
-        return;
-      }
+  async function showReminder(msg, generation = messageGeneration) {
+    // Body overlays cannot cover the browser's fullscreen top layer.
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); }
+      catch { return false; }
     }
-
-    const minutes = typeof msg.minutes === 'number' && msg.minutes > 0 ? msg.minutes : 30;
-
-    renderCat(minutes, {
+    if (generation !== messageGeneration) return false;
+    const existing = document.getElementById('cat-guard-root');
+    let alreadyLocked = false;
+    if (existing) {
+      const existingPreview = existing.dataset.preview === 'true';
+      if (msg.preview && !existingPreview) return true;
+      if (!msg.preview && !existingPreview && existing.dataset.reminderId === msg.reminderId) {
+        pausePageMedia();
+        return true;
+      }
+      // Keep original media, overflow, inert and focus state when replacing a preview.
+      existing.remove();
+      if (activeKeydownHandler) document.removeEventListener('keydown', activeKeydownHandler, true);
+      activeKeydownHandler = null;
+      alreadyLocked = true;
+    }
+    renderCat(typeof msg.minutes === 'number' && msg.minutes > 0 ? msg.minutes : 30, {
       repeatIntervalMin: msg.repeatIntervalMin,
       reminderIndex: msg.reminderIndex,
-      preview: Boolean(msg.preview)
+      reminderId: msg.reminderId,
+      preview: Boolean(msg.preview),
+      alreadyLocked
     });
+    return true;
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'SHOW_CAT' || msg.type === 'ENSURE_CAT') {
-      if (typeof msg.minutes === 'number' && msg.minutes > 0) {
-        showReminder(msg);
-      } else {
-        chrome.storage.local.get(['threshold'], (data) => {
-          showReminder({ ...msg, minutes: data.threshold || 30 });
-        });
-      }
-      sendResponse({ ok: true });
-      return;
+      const generation = ++messageGeneration;
+      showReminder(msg, generation).then(ok => {
+        sendResponse({ ok });
+      }, () => sendResponse({ ok: false }));
+      return true;
     }
-
     if (msg.type === 'HIDE_CAT') {
-      if (document.getElementById('cat-guard-root')) {
+      ++messageGeneration;
+      const root = document.getElementById('cat-guard-root');
+      if (root && (!msg.reminderId || root.dataset.reminderId === msg.reminderId)) {
         removeOverlay({ resume: Boolean(msg.resume) });
       }
       sendResponse({ ok: true });
     }
   });
 
+  function syncReminderState() {
+    if (window.__catGuardPreviewPage) return;
+    const generation = messageGeneration;
+    chrome.runtime.sendMessage({ type: 'GET_REMINDER_STATE' }, response => {
+      if (chrome.runtime.lastError || !response?.ok || generation !== messageGeneration) return;
+      if (response.reminder) {
+        const next = ++messageGeneration;
+        showReminder(response.reminder, next).catch(() => {});
+      } else {
+        const root = document.getElementById('cat-guard-root');
+        if (root && root.dataset.preview !== 'true') removeOverlay({ resume: false });
+      }
+    });
+  }
+  if (!window.__catGuardPreviewPage) {
+    syncReminderState();
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) syncReminderState();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement && document.getElementById('cat-guard-root')) {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+  }
+
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
 
     if (changes.enabled?.newValue === false || changes.threshold) {
+      ++messageGeneration;
       if (document.getElementById('cat-guard-root')) {
         removeOverlay({ resume: true });
       }
